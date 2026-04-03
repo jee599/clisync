@@ -8,7 +8,7 @@ import { abs, PROFILES } from "../src/profiles.js";
 import * as store from "../src/store.js";
 import { t, setLang } from "../src/i18n.js";
 
-const VERSION = "0.2.0";
+const VERSION = "0.3.0";
 const CMD = "clisync";
 const args = process.argv.slice(2);
 const flags = new Set(args.filter((a) => a.startsWith("-")));
@@ -81,14 +81,55 @@ function ask(question) {
 
 // ─── init ─────────────────────────────────────────────
 async function cmdInit() {
-  console.log(`
-${b(`${CMD} init`)} — ${t("initTitle")}
+  // --token flag: manual token entry
+  if (flags.has("--token")) {
+    return cmdInitToken();
+  }
 
-  ${t("initHasToken")}
-  ${t("initNewToken")}
-  ${c("https://github.com/settings/tokens/new?scopes=gist&description=clisync")}
-  ${d(`(${t("initHint")})`)}
+  // Default: OAuth Device Flow
+  console.log(`\n${b(`${CMD} init`)} — ${t("initTitle")}\n`);
+
+  let flow;
+  try {
+    flow = await store.startDeviceFlow();
+  } catch (e) {
+    console.log(`  ${y("⚠")} OAuth unavailable, falling back to token.\n`);
+    return cmdInitToken();
+  }
+
+  console.log(`  ${t("initOauth")}`);
+  console.log(`  ${c(flow.verification_uri)}\n`);
+  console.log(`  ${t("initCode")} ${b(flow.user_code)}\n`);
+
+  // Try to open browser automatically
+  try {
+    const open = process.platform === "win32" ? "start" : process.platform === "darwin" ? "open" : "xdg-open";
+    const { exec } = await import("node:child_process");
+    exec(`${open} ${flow.verification_uri}`);
+  } catch { /* manual open is fine */ }
+
+  console.log(`  ${d(t("initWaiting"))}`);
+
+  try {
+    const token = await store.pollDeviceFlow(flow.device_code, flow.interval || 5);
+    const username = await store.init(token);
+    console.log(`
+  ${g("✓")} ${t("tokenOk")} (${b(username)})
+
+  ${t("nowReady")}
+    ${c(`${CMD} save`)}   ${t("saveHint")}
+    ${c(`${CMD} load`)}   ${t("loadHint")}
 `);
+  } catch (e) {
+    console.log(`\n  ${r("✗")} ${t("tokenFail")} ${e.message}`);
+    console.log(`  ${t("tokenRetry")}\n`);
+    process.exit(1);
+  }
+}
+
+async function cmdInitToken() {
+  console.log(`\n${b(`${CMD} init --token`)} — ${t("initTitle")}\n`);
+  console.log(`  ${c("https://github.com/settings/tokens/new?scopes=gist&description=clisync")}\n`);
 
   const token = await askSecret(t("tokenPrompt"));
 
@@ -323,7 +364,8 @@ function showHelp() {
   ${b(CMD)} v${VERSION} — ${t("helpDesc")}
 
   ${b(t("helpUsage"))}
-    ${c(`${CMD} init`)}              ${t("helpInit")}
+    ${c(`${CMD} init`)}              ${t("helpInit")} (OAuth)
+    ${c(`${CMD} init --token`)}      ${t("helpInit")} (PAT)
     ${c(`${CMD} save`)}              ${t("helpSave")}
     ${c(`${CMD} load`)}              ${t("helpLoad")}
     ${c(`${CMD} list`)}              ${t("helpList")}

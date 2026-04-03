@@ -54,7 +54,51 @@ export function getInfo() {
   };
 }
 
-// ─── Init: validate + save token ──────────────────────
+// ─── OAuth Device Flow ───────────────────────────────
+
+const OAUTH_CLIENT_ID = "Ov23liZwxbu3BVJrQ0qn";
+
+export async function startDeviceFlow() {
+  const res = await fetch("https://github.com/login/device/code", {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ client_id: OAUTH_CLIENT_ID, scope: "gist" }),
+  });
+  if (!res.ok) throw new Error("Failed to start device flow");
+  return res.json(); // { device_code, user_code, verification_uri, expires_in, interval }
+}
+
+export async function pollDeviceFlow(deviceCode, interval = 5) {
+  const deadline = Date.now() + 10 * 60 * 1000; // 10 min timeout
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, interval * 1000));
+    const res = await fetch("https://github.com/login/oauth/access_token", {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        client_id: OAUTH_CLIENT_ID,
+        device_code: deviceCode,
+        grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+      }),
+    });
+    const data = await res.json();
+    if (data.access_token) return data.access_token;
+    if (data.error === "authorization_pending") continue;
+    if (data.error === "slow_down") { interval += 5; continue; }
+    if (data.error === "expired_token") throw new Error("Authorization expired. Please try again.");
+    if (data.error === "access_denied") throw new Error("Authorization denied.");
+    throw new Error(data.error_description || data.error || "Unknown OAuth error");
+  }
+  throw new Error("Authorization timed out.");
+}
+
+// ─── Init: save token + validate ─────────────────────
 
 export async function init(token) {
   const res = await fetch(`${API}/user`, {

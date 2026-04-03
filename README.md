@@ -37,15 +37,28 @@ npm install -g clisync
 
 ```bash
 # Machine A — save your settings
-clisync init     # paste GitHub token (gist scope only)
+clisync init     # opens browser → click "Authorize" → done
 clisync save     # done
 
 # Machine B — restore everything
-clisync init     # same token
+clisync init     # same GitHub account
 clisync load     # done — all configs restored
 ```
 
-> Create a token here: [github.com/settings/tokens/new?scopes=gist](https://github.com/settings/tokens/new?scopes=gist&description=clisync)
+```
+clisync init
+
+  Open this URL in your browser and enter the code:
+  https://github.com/login/device
+
+  Code: ABCD-1234
+
+  Waiting for browser authorization...
+
+  ✓ Authenticated! (jee599)
+```
+
+> Prefer a personal access token? Use `clisync init --token`
 
 ```
 clisync save
@@ -91,7 +104,8 @@ General dotfile managers work, but they don't know which files your LLM tools us
 
 | Command | What it does |
 |:---|:---|
-| `clisync init` | Set up GitHub token (once per machine) |
+| `clisync init` | Authenticate via GitHub OAuth (once per machine) |
+| `clisync init --token` | Authenticate via personal access token |
 | `clisync save` | Upload configs to private Gist |
 | `clisync load` | Download and restore configs |
 | `clisync list` | Show detected local configs |
