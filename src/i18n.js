@@ -52,7 +52,7 @@ const messages = {
     tools: "개 도구",
 
     // link
-    linkUsage: "사용법: lcs link <gist-id>",
+    linkUsage: "사용법: cs link <gist-id>",
     linkDone: "Gist 연결 완료!",
 
     // help
@@ -132,7 +132,7 @@ const messages = {
     local: "Local:",
     tools: "tools",
 
-    linkUsage: "Usage: lcs link <gist-id>",
+    linkUsage: "Usage: cs link <gist-id>",
     linkDone: "Linked to Gist!",
 
     helpDesc: "Sync LLM CLI settings across machines",
@@ -164,7 +164,7 @@ const messages = {
 };
 
 function detectLang() {
-  const env = process.env.LCS_LANG || process.env.LANG || process.env.LC_ALL || process.env.LANGUAGE || "";
+  const env = process.env.CS_LANG || process.env.LANG || process.env.LC_ALL || process.env.LANGUAGE || "";
   if (env.toLowerCase().startsWith("ko")) return "ko";
   // Check Windows locale via Intl API
   if (process.platform === "win32") {

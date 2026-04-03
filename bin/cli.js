@@ -8,12 +8,12 @@ import { abs, PROFILES } from "../src/profiles.js";
 import * as store from "../src/store.js";
 import { t, setLang, getLang } from "../src/i18n.js";
 
-const VERSION = "0.2.1";
+const VERSION = "0.1.0";
 const args = process.argv.slice(2);
 const flags = new Set(args.filter((a) => a.startsWith("-")));
 // Handle version flags before cmd parsing
 if (flags.has("-v") || flags.has("--version")) {
-  console.log(`lcs v${VERSION}`);
+  console.log(`cs v${VERSION}`);
   process.exit(0);
 }
 const cmd = args.find((a) => !a.startsWith("-"));
@@ -76,7 +76,7 @@ function ask(question) {
 // ─── init ─────────────────────────────────────────────
 async function cmdInit() {
   console.log(`
-${b("lcs init")} — ${t("initTitle")}
+${b("cs init")} — ${t("initTitle")}
 
   ${t("initHasToken")}
   ${t("initNewToken")}
@@ -99,8 +99,8 @@ ${b("lcs init")} — ${t("initTitle")}
   ${d(`${t("tokenSaved")} ~/.llm-sync/auth.json`)}
 
   ${t("nowReady")}
-    ${c("lcs save")}   ${t("saveHint")}
-    ${c("lcs load")}   ${t("loadHint")}
+    ${c("cs save")}   ${t("saveHint")}
+    ${c("cs load")}   ${t("loadHint")}
 `);
   } catch (e) {
     console.log(`\n  ${r("✗")} ${t("tokenFail")} ${e.message}`);
@@ -114,7 +114,7 @@ async function cmdSave() {
   requireInit();
   const skipRedact = flags.has("--no-redact");
 
-  console.log(`\n${b("lcs save")}\n`);
+  console.log(`\n${b("cs save")}\n`);
   console.log(`  ${t("scanning")}\n`);
 
   const results = scan();
@@ -158,8 +158,8 @@ async function cmdSave() {
   ${d("https://gist.github.com/" + gistId)}
 
   ${d(t("fromOther"))}
-    ${c("npx llm-configsync init")}   ${t("saveHint")}
-    ${c("npx llm-configsync load")}   ${t("loadHint")}
+    ${c("npx clisync init")}   ${t("saveHint")}
+    ${c("npx clisync load")}   ${t("loadHint")}
 `);
   } catch (e) {
     console.log(`\n  ${r("✗")} ${t("uploadFail")} ${e.message}\n`);
@@ -172,7 +172,7 @@ async function cmdLoad() {
   requireInit();
   const force = flags.has("--force");
 
-  console.log(`\n${b("lcs load")}\n`);
+  console.log(`\n${b("cs load")}\n`);
   console.log(`  ${t("downloading")}\n`);
 
   let bundle;
@@ -180,7 +180,7 @@ async function cmdLoad() {
     bundle = await store.pull();
   } catch (e) {
     console.log(`  ${r("✗")} ${e.message}`);
-    console.log(`  ${t("loadFirst")} ${c("lcs save")} ${t("loadFirstSuffix")}\n`);
+    console.log(`  ${t("loadFirst")} ${c("cs save")} ${t("loadFirstSuffix")}\n`);
     return;
   }
 
@@ -255,7 +255,7 @@ async function cmdLoad() {
 
 // ─── list ─────────────────────────────────────────────
 function cmdList() {
-  console.log(`\n${b("lcs list")}\n`);
+  console.log(`\n${b("cs list")}\n`);
 
   const results = scan();
   if (results.length === 0) {
@@ -275,7 +275,7 @@ function cmdList() {
 
 // ─── status ──────────────────────────────────────────
 function cmdStatus() {
-  console.log(`\n${b("lcs status")}\n`);
+  console.log(`\n${b("cs status")}\n`);
 
   const info = store.getInfo();
   console.log(`  ${t("initialized")}  ${info.initialized ? g("✓") : r("✗")}`);
@@ -302,19 +302,19 @@ function cmdLink() {
 // ─── help ─────────────────────────────────────────────
 function showHelp() {
   console.log(`
-  ${b("lcs")} v${VERSION} — ${t("helpDesc")}
+  ${b("cs")} v${VERSION} — ${t("helpDesc")}
 
   ${b(t("helpUsage"))}
-    ${c("lcs init")}              ${t("helpInit")}
-    ${c("lcs save")}              ${t("helpSave")}
-    ${c("lcs load")}              ${t("helpLoad")}
-    ${c("lcs list")}              ${t("helpList")}
-    ${c("lcs status")}            ${t("helpStatus")}
-    ${c("lcs link <gist-id>")}    ${t("helpLink")}
+    ${c("cs init")}              ${t("helpInit")}
+    ${c("cs save")}              ${t("helpSave")}
+    ${c("cs load")}              ${t("helpLoad")}
+    ${c("cs list")}              ${t("helpList")}
+    ${c("cs status")}            ${t("helpStatus")}
+    ${c("cs link <gist-id>")}    ${t("helpLink")}
 
   ${b(t("helpOptions"))}
-    ${c("lcs save --no-redact")}  ${t("helpNoRedact")}
-    ${c("lcs load --force")}      ${t("helpForce")}
+    ${c("cs save --no-redact")}  ${t("helpNoRedact")}
+    ${c("cs load --force")}      ${t("helpForce")}
     ${c("--lang=en|ko")}          ${t("helpLang")}
     ${c("--en / --ko")}           ${t("helpLang")}
 
@@ -327,7 +327,7 @@ function showHelp() {
 
 function requireInit() {
   if (!store.isInitialized()) {
-    console.log(`\n  ${r("✗")} ${t("requireInit")} ${c("lcs init")} ${t("requireInitSuffix")}\n`);
+    console.log(`\n  ${r("✗")} ${t("requireInit")} ${c("cs init")} ${t("requireInitSuffix")}\n`);
     process.exit(1);
   }
 }
@@ -390,7 +390,7 @@ switch (cmd) {
   case "list":    cmdList(); break;
   case "status":  cmdStatus(); break;
   case "link":    cmdLink(); break;
-  case "version": console.log(`lcs v${VERSION}`); break;
+  case "version": console.log(`cs v${VERSION}`); break;
   case undefined: showHelp(); break;
   default:
     console.log(`\n  ${r("✗")} ${t("unknownCmd")} ${cmd}`);

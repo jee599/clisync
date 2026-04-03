@@ -1,5 +1,5 @@
 <p align="center">
-  <strong>llm-configsync</strong>
+  <strong>clisync</strong>
 </p>
 
 <p align="center">
@@ -7,8 +7,8 @@
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/llm-configsync"><img src="https://img.shields.io/npm/v/llm-configsync?style=flat-square" alt="npm" /></a>
-  <a href="https://github.com/jee599/llm-configsync/blob/main/LICENSE"><img src="https://img.shields.io/github/license/jee599/llm-configsync?style=flat-square" alt="License" /></a>
+  <a href="https://www.npmjs.com/package/clisync"><img src="https://img.shields.io/npm/v/clisync?style=flat-square" alt="npm" /></a>
+  <a href="https://github.com/jee599/clisync/blob/main/LICENSE"><img src="https://img.shields.io/github/license/jee599/clisync?style=flat-square" alt="License" /></a>
   <img src="https://img.shields.io/badge/dependencies-0-brightgreen?style=flat-square" alt="Zero Dependencies" />
 </p>
 
@@ -16,36 +16,36 @@
 
 New machine. Claude Code, Gemini CLI, Codex all installed — but none of your settings, MCP servers, hooks, or slash commands carried over. You're setting everything up from scratch. Again.
 
-**llm-configsync** backs up all your LLM CLI configs to a private GitHub Gist and restores them anywhere in one command.
+**clisync** backs up all your LLM CLI configs to a private GitHub Gist and restores them anywhere in one command.
 
 ```
 Machine A                     GitHub Gist              Machine B
                                (private)
 ~/.claude/*  ─┐                                   ┌─> ~/.claude/*
-~/.gemini/*  ─┼── lcs save ──>  JSON bundle ──> lcs load ──┼─> ~/.gemini/*
+~/.gemini/*  ─┼── cs save ──>  JSON bundle ──> cs load ──┼─> ~/.gemini/*
 ~/.codex/*   ─┘                                   └─> ~/.codex/*
 ```
 
 ## Install
 
 ```bash
-npm install -g llm-configsync
+npm install -g clisync
 ```
 
 ## Quick Start
 
 ```bash
 # Machine A — save your settings
-lcs init     # paste GitHub token (gist scope only)
-lcs save     # done
+cs init     # paste GitHub token (gist scope only)
+cs save     # done
 
 # Machine B — restore everything
-lcs init     # same token
-lcs load     # done — all configs restored
+cs init     # same token
+cs load     # done — all configs restored
 ```
 
 ```
-lcs save
+cs save
 
   ✓ Claude Code — 5 files, 8.2KB
     .claude/settings.json (1.5KB)
@@ -79,15 +79,15 @@ lcs save
 
 | Command | What it does |
 |:---|:---|
-| `lcs init` | Set up GitHub token (once per machine) |
-| `lcs save` | Upload configs to private Gist |
-| `lcs load` | Download and restore configs |
-| `lcs list` | Show detected local configs |
-| `lcs status` | Show sync status |
-| `lcs link <gist-id>` | Link to existing Gist |
-| `lcs save --no-redact` | Upload without redacting API keys |
-| `lcs load --force` | Overwrite without backups |
-| `lcs --version` | Show version |
+| `cs init` | Set up GitHub token (once per machine) |
+| `cs save` | Upload configs to private Gist |
+| `cs load` | Download and restore configs |
+| `cs list` | Show detected local configs |
+| `cs status` | Show sync status |
+| `cs link <gist-id>` | Link to existing Gist |
+| `cs save --no-redact` | Upload without redacting API keys |
+| `cs load --force` | Overwrite without backups |
+| `cs --version` | Show version |
 | `--lang=en` / `--ko` | Change language (auto-detected) |
 
 ## Safety
@@ -109,10 +109,10 @@ Auto-detects system locale (English/Korean). Override with `--lang=en` or `--ko`
 ## How It Works
 
 ```
-lcs save:
+cs save:
   ~/.claude/* ──> scan ──> skip sensitive ──> redact secrets ──> JSON bundle ──> Gist API
                                                                                      |
-lcs load:                                                                            |
+cs load:                                                                            |
   Gist API ──> download ──> validate paths ──> backup existing ──> write files ──────┘
 ```
 
