@@ -3,7 +3,8 @@
 </p>
 
 <p align="center">
-  <strong>Sync all your LLM CLI settings across machines. 6 tools, 1 command.</strong>
+  Sync Claude Code, Gemini CLI, Codex, Aider settings across machines.<br>
+  <strong>6 tools. 1 command. 10 seconds.</strong>
 </p>
 
 <p align="center">
@@ -16,14 +17,14 @@
 
 New machine. Claude Code, Gemini CLI, Codex all installed — but none of your settings, MCP servers, hooks, or slash commands carried over. You're setting everything up from scratch. Again.
 
-**clisync** backs up all your LLM CLI configs to a private GitHub Gist and restores them anywhere in one command.
+**clisync** backs up all your LLM CLI configs to a private GitHub Gist and restores them anywhere in one command. **API keys are auto-redacted** (17 patterns) so your secrets never leave your machine.
 
 ```
 Machine A                     GitHub Gist              Machine B
                                (private)
-~/.claude/*  ─┐                                   ┌─> ~/.claude/*
-~/.gemini/*  ─┼── cs save ──>  JSON bundle ──> cs load ──┼─> ~/.gemini/*
-~/.codex/*   ─┘                                   └─> ~/.codex/*
+~/.claude/*  ─┐                                    ┌─> ~/.claude/*
+~/.gemini/*  ─┼─ clisync save ─>  JSON bundle ─> clisync load ─┼─> ~/.gemini/*
+~/.codex/*   ─┘                                    └─> ~/.codex/*
 ```
 
 ## Install
@@ -36,16 +37,18 @@ npm install -g clisync
 
 ```bash
 # Machine A — save your settings
-cs init     # paste GitHub token (gist scope only)
-cs save     # done
+clisync init     # paste GitHub token (gist scope only)
+clisync save     # done
 
 # Machine B — restore everything
-cs init     # same token
-cs load     # done — all configs restored
+clisync init     # same token
+clisync load     # done — all configs restored
 ```
 
+> Create a token here: [github.com/settings/tokens/new?scopes=gist](https://github.com/settings/tokens/new?scopes=gist&description=clisync)
+
 ```
-cs save
+clisync save
 
   ✓ Claude Code — 5 files, 8.2KB
     .claude/settings.json (1.5KB)
@@ -61,7 +64,7 @@ cs save
     .codex/rules/default.rules (1.2KB)
 
   Total: 9 files, 10.4KB
-  Settings 4 | MCP 0 | Hooks 1 | Skills 1 | Instructions 3
+  Settings 4 | Hooks 1 | Skills 1 | Instructions 3
 ```
 
 ## What Gets Synced
@@ -75,31 +78,43 @@ cs save
 | **Continue** | `.continue/.continuerc.json`, `.continue/config.yaml`, `.continue/config.ts`, `.continue/.continueignore` |
 | **Copilot CLI** | `.config/github-copilot/settings.json` |
 
+## Why Not chezmoi / yadm?
+
+General dotfile managers work, but they don't know which files your LLM tools use. clisync does:
+
+- **Auto-discovers** config paths for 6 LLM CLI tools
+- **Auto-redacts** 17 API key patterns (OpenAI, Anthropic, AWS, GitHub, HuggingFace, etc.)
+- **Auto-skips** sensitive files (`auth.json`, `.env`, `.pem`, `.key`)
+- **Zero config** — no manifest file to maintain
+
 ## Commands
 
 | Command | What it does |
 |:---|:---|
-| `cs init` | Set up GitHub token (once per machine) |
-| `cs save` | Upload configs to private Gist |
-| `cs load` | Download and restore configs |
-| `cs list` | Show detected local configs |
-| `cs status` | Show sync status |
-| `cs link <gist-id>` | Link to existing Gist |
-| `cs save --no-redact` | Upload without redacting API keys |
-| `cs load --force` | Overwrite without backups |
-| `cs --version` | Show version |
+| `clisync init` | Set up GitHub token (once per machine) |
+| `clisync save` | Upload configs to private Gist |
+| `clisync load` | Download and restore configs |
+| `clisync list` | Show detected local configs |
+| `clisync status` | Show sync status |
+| `clisync link <gist-id>` | Link to existing Gist |
+
+| Option | What it does |
+|:---|:---|
+| `--no-redact` | Upload without redacting API keys |
+| `--force` | Overwrite without backups or confirmation |
+| `--version` / `-v` | Show version |
 | `--lang=en` / `--ko` | Change language (auto-detected) |
 
 ## Safety
 
 - **17 API key patterns auto-redacted** — OpenAI, Anthropic, Google, AWS, GitHub, GitLab, HuggingFace, Slack, Replicate, Vercel, Supabase, and generic key-value patterns
-- **Sensitive files auto-skipped** — `auth.json`, `credentials.json`, `.env`, `.pem`, `.key` files are never uploaded
-- **Private Gist** — only you can see it
+- **Sensitive files auto-skipped** — `auth.json`, `credentials.json`, `.env`, `.pem`, `.key` are never uploaded
+- **Confirmation prompt** — `clisync load` asks before overwriting (skip with `--force`)
 - **Backups** — existing files saved as `.bak` before overwriting
-- **File size limit** — files over 1MB are skipped; binary files auto-detected and excluded
+- **Private Gist** — only you can see it
+- **Token security** — hidden input on entry, file permissions 0600 (Unix)
 - **Path traversal protection** — validates all paths on restore
-- **Token security** — hidden input on entry, file permissions set to owner-only (0600)
-- **Cross-platform** — works on macOS, Linux, and Windows with consistent path handling
+- **Cross-platform** — macOS, Linux, Windows with consistent forward-slash path handling
 - **Zero dependencies** — Node.js 18+ built-in modules only
 
 ## Language
@@ -109,11 +124,11 @@ Auto-detects system locale (English/Korean). Override with `--lang=en` or `--ko`
 ## How It Works
 
 ```
-cs save:
-  ~/.claude/* ──> scan ──> skip sensitive ──> redact secrets ──> JSON bundle ──> Gist API
-                                                                                     |
-cs load:                                                                            |
-  Gist API ──> download ──> validate paths ──> backup existing ──> write files ──────┘
+clisync save:
+  ~/.claude/* ──> scan ──> skip sensitive ──> redact secrets ──> JSON ──> Gist API
+                                                                              |
+clisync load:                                                                 |
+  Gist API ──> download ──> validate paths ──> confirm ──> backup ──> write ──┘
 ```
 
 No server, no database, no account to create. Just your GitHub token and a private Gist.

@@ -1,10 +1,9 @@
 const messages = {
   ko: {
-    // init
     initTitle: "이 컴퓨터에 GitHub 토큰 등록",
     initHasToken: "이미 토큰이 있으면 바로 붙여넣기 하세요.",
     initNewToken: "처음이면 아래 링크에서 토큰을 만들 수 있습니다:",
-    initHint: "(gist 권한만 체크 → Generate token → 복사)",
+    initHint: "gist 권한만 체크 → Generate token → 복사",
     tokenPrompt: "  GitHub token: ",
     tokenEmpty: "토큰이 입력되지 않았습니다.",
     tokenChecking: "토큰 확인 중...",
@@ -17,7 +16,6 @@ const messages = {
     loadHint: "← 다른 컴퓨터에서 불러오기",
     fromOther: "다른 컴퓨터에서:",
 
-    // save
     scanning: "설정 파일 탐색 중...",
     noConfigs: "검색된 LLM CLI 설정이 없습니다.",
     supported: "지원 도구:",
@@ -30,7 +28,6 @@ const messages = {
     done: "완료!",
     uploadFail: "업로드 실패:",
 
-    // load
     downloading: "Gist에서 다운로드 중...",
     savedAt: "저장 시점:",
     savedMachine: "저장 머신:",
@@ -39,23 +36,20 @@ const messages = {
     restored: "개 파일 복원 완료",
     alreadySame: "개 파일은 이미 동일",
     backedUp: "기존 파일은 .bak으로 백업됨",
-    loadFirst: "먼저 다른 컴퓨터에서",
-    loadFirstSuffix: "를 실행하세요.",
+    loadFirst: "먼저 다른 컴퓨터에서 {cmd}를 실행하세요.",
+    loadNetworkError: "네트워크 오류입니다. 인터넷 연결을 확인하세요.",
+    confirmLoad: "파일을 덮어쓸까요? (기존 파일은 .bak으로 백업됩니다) [y/N] ",
 
-    // list
     noLocal: "이 컴퓨터에서 검색된 LLM CLI 설정이 없습니다.",
 
-    // status
     initialized: "초기화:",
     account: "계정:",
     local: "로컬:",
     tools: "개 도구",
 
-    // link
-    linkUsage: "사용법: cs link <gist-id>",
+    linkUsage: "사용법: clisync link <gist-id>",
     linkDone: "Gist 연결 완료!",
 
-    // help
     helpDesc: "LLM CLI 설정 동기화",
     helpUsage: "사용법:",
     helpOptions: "옵션:",
@@ -70,18 +64,15 @@ const messages = {
     helpForce: "백업 없이 덮어쓰기",
     helpLang: "언어 변경 (ko/en)",
 
-    // common
-    requireInit: "먼저",
-    requireInitSuffix: "을 실행하세요.",
+    requireInit: "먼저 {cmd}을 실행하세요.",
     unknownCmd: "알 수 없는 명령어:",
     other: "기타",
 
-    // categories
-    catSettings: "세팅",
-    catMcp: "MCP 서버",
+    catSettings: "설정",
+    catMcp: "MCP",
     catHooks: "훅",
     catSkills: "스킬",
-    catInstructions: "인스트럭션",
+    catInstructions: "지침",
     catEtc: "기타",
   },
 
@@ -89,7 +80,7 @@ const messages = {
     initTitle: "Register GitHub token on this machine",
     initHasToken: "If you already have a token, paste it below.",
     initNewToken: "First time? Create a token here:",
-    initHint: "(check gist scope only → Generate token → copy)",
+    initHint: "check gist scope only → Generate token → copy",
     tokenPrompt: "  GitHub token: ",
     tokenEmpty: "No token provided.",
     tokenChecking: "Verifying token...",
@@ -122,8 +113,9 @@ const messages = {
     restored: "files restored",
     alreadySame: "files already identical",
     backedUp: "Existing files backed up as .bak",
-    loadFirst: "Run",
-    loadFirstSuffix: "on another machine first.",
+    loadFirst: "Please run {cmd} on another machine first.",
+    loadNetworkError: "Network error. Check your internet connection.",
+    confirmLoad: "Overwrite files? (existing files backed up as .bak) [y/N] ",
 
     noLocal: "No LLM CLI configs found on this machine.",
 
@@ -132,7 +124,7 @@ const messages = {
     local: "Local:",
     tools: "tools",
 
-    linkUsage: "Usage: cs link <gist-id>",
+    linkUsage: "Usage: clisync link <gist-id>",
     linkDone: "Linked to Gist!",
 
     helpDesc: "Sync LLM CLI settings across machines",
@@ -149,8 +141,7 @@ const messages = {
     helpForce: "Overwrite without backups",
     helpLang: "Change language (ko/en)",
 
-    requireInit: "First run",
-    requireInitSuffix: ".",
+    requireInit: "Please run {cmd} first.",
     unknownCmd: "Unknown command:",
     other: "Other",
 
@@ -164,9 +155,8 @@ const messages = {
 };
 
 function detectLang() {
-  const env = process.env.CS_LANG || process.env.LANG || process.env.LC_ALL || process.env.LANGUAGE || "";
+  const env = process.env.CLISYNC_LANG || process.env.LANG || process.env.LC_ALL || process.env.LANGUAGE || "";
   if (env.toLowerCase().startsWith("ko")) return "ko";
-  // Check Windows locale via Intl API
   if (process.platform === "win32") {
     try {
       const locale = Intl.DateTimeFormat().resolvedOptions().locale || "";
@@ -182,9 +172,15 @@ export function setLang(lang) {
   currentLang = lang;
 }
 
-export function t(key) {
+export function t(key, vars) {
   const lang = currentLang || detectLang();
-  return (messages[lang] && messages[lang][key]) || messages.en[key] || key;
+  let msg = (messages[lang] && messages[lang][key]) || messages.en[key] || key;
+  if (vars) {
+    for (const [k, v] of Object.entries(vars)) {
+      msg = msg.replace(`{${k}}`, v);
+    }
+  }
+  return msg;
 }
 
 export function getLang() {

@@ -4,15 +4,28 @@ import { homedir, platform } from "node:os";
 
 const HOME = homedir();
 const IS_WIN = platform() === "win32";
-const CONFIG_DIR = join(HOME, ".llm-sync");
+const CONFIG_DIR = join(HOME, ".clisync");
+const OLD_CONFIG_DIR = join(HOME, ".llm-sync"); // backward compat
 const AUTH_FILE = join(CONFIG_DIR, "auth.json");
 const API = "https://api.github.com";
-const GIST_DESC = "llm-sync: LLM CLI settings";
-const MAX_GIST_SIZE = 9 * 1024 * 1024; // 9 MB safety margin (GitHub limit ~10 MB)
+const GIST_DESC = "clisync: LLM CLI settings";
+const OLD_GIST_DESC = "llm-sync: LLM CLI settings"; // backward compat
+const MAX_GIST_SIZE = 9 * 1024 * 1024;
 
 // ─── Local config ─────────────────────────────────────
 
+function migrateOldConfig() {
+  if (existsSync(OLD_CONFIG_DIR) && !existsSync(CONFIG_DIR)) {
+    const oldAuth = join(OLD_CONFIG_DIR, "auth.json");
+    if (existsSync(oldAuth)) {
+      mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
+      writeFileSync(AUTH_FILE, readFileSync(oldAuth, "utf-8"), { mode: 0o600 });
+    }
+  }
+}
+
 function readConfig() {
+  migrateOldConfig();
   if (!existsSync(AUTH_FILE)) return {};
   try { return JSON.parse(readFileSync(AUTH_FILE, "utf-8")); }
   catch { return {}; }
@@ -21,7 +34,6 @@ function readConfig() {
 function writeConfig(data) {
   mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
   writeFileSync(AUTH_FILE, JSON.stringify(data, null, 2), { mode: 0o600 });
-  // On non-Windows, also enforce permissions explicitly
   if (!IS_WIN) {
     try { chmodSync(CONFIG_DIR, 0o700); } catch { /* best effort */ }
     try { chmodSync(AUTH_FILE, 0o600); } catch { /* best effort */ }
@@ -46,7 +58,7 @@ export function getInfo() {
 
 export async function init(token) {
   const res = await fetch(`${API}/user`, {
-    headers: { Authorization: `Bearer ${token}`, "User-Agent": "llm-sync" },
+    headers: { Authorization: `Bearer ${token}`, "User-Agent": "clisync" },
   });
   if (!res.ok) throw new Error("Invalid token");
   const user = await res.json();
@@ -79,7 +91,7 @@ async function api(path, options = {}) {
     headers: {
       Authorization: `Bearer ${getToken()}`,
       Accept: "application/vnd.github+json",
-      "User-Agent": "llm-sync",
+      "User-Agent": "clisync",
       ...options.headers,
     },
   });
@@ -88,7 +100,6 @@ async function api(path, options = {}) {
       const retryAfter = res.headers.get("retry-after");
       throw new Error(`GitHub API rate limited (${res.status}). ${retryAfter ? `Retry after ${retryAfter}s` : "Try again later."}`);
     }
-    // Sanitize error: don't leak token or full response
     const body = await res.text();
     const safe = body.slice(0, 200).replace(/gho_\w+|ghp_\w+|github_pat_\w+|Bearer\s+\S+/gi, "***");
     throw new Error(`GitHub API ${res.status}: ${safe}`);
@@ -98,18 +109,17 @@ async function api(path, options = {}) {
 
 async function findGist() {
   const config = readConfig();
-  // If we have a saved gist ID, use it directly
   if (config.gistId) {
     try {
       return await api(`/gists/${config.gistId}`);
     } catch { /* fall through to search */ }
   }
-  // Search with pagination (up to 5 pages = 500 gists)
   for (let page = 1; page <= 5; page++) {
     const gists = await api(`/gists?per_page=100&page=${page}`);
-    const found = gists.find((g) => g.description === GIST_DESC);
+    // Match both new and old gist descriptions for backward compat
+    const found = gists.find((g) => g.description === GIST_DESC || g.description === OLD_GIST_DESC);
     if (found) return found;
-    if (gists.length < 100) break; // no more pages
+    if (gists.length < 100) break;
   }
   return null;
 }
@@ -134,7 +144,7 @@ export async function push(filesMap) {
   const payload = {
     description: GIST_DESC,
     public: false,
-    files: { "llm-sync.json": { content } },
+    files: { "clisync.json": { content } },
   };
 
   const existing = await findGist();
@@ -152,7 +162,6 @@ export async function push(filesMap) {
     });
   }
 
-  // Save gist ID locally
   const config = readConfig();
   config.gistId = gist.id;
   writeConfig(config);
@@ -166,10 +175,9 @@ function validateBundle(bundle) {
   if (!bundle || typeof bundle !== "object") throw new Error("Invalid bundle format");
   if (!bundle.files || typeof bundle.files !== "object") throw new Error("Bundle has no files");
 
-  // Path traversal check
   for (const rel of Object.keys(bundle.files)) {
     const normalized = normalize(rel);
-    if (normalized.startsWith("..") || isAbsolute(normalized)) {
+    if (normalized.startsWith("..") || isAbsolute(normalized) || rel.includes(":") || rel.includes("\0")) {
       throw new Error(`Unsafe path detected: ${rel}`);
     }
   }
@@ -180,21 +188,19 @@ export async function pull() {
   const gist = await findGist();
   if (!gist) throw new Error("No saved config found");
 
-  // Find our file (handle possible filename variations)
   const fileName = Object.keys(gist.files).find(
-    (f) => f === "llm-sync.json" || f === "llm-sync-data.json"
+    (f) => f === "clisync.json" || f === "llm-sync.json" || f === "llm-sync-data.json"
   );
-  if (!fileName) throw new Error("No llm-sync data in gist");
+  if (!fileName) throw new Error("No clisync data in gist");
 
   const file = gist.files[fileName];
 
-  // If content is truncated, fetch from raw_url
   let content = file.content;
   if (!content && file.raw_url) {
     const res = await fetch(file.raw_url, {
       headers: {
         Authorization: `Bearer ${getToken()}`,
-        "User-Agent": "llm-sync",
+        "User-Agent": "clisync",
       },
     });
     if (!res.ok) throw new Error("Failed to fetch gist content");

@@ -6,14 +6,16 @@ import readline from "node:readline";
 import { scan, collectFiles } from "../src/scanner.js";
 import { abs, PROFILES } from "../src/profiles.js";
 import * as store from "../src/store.js";
-import { t, setLang, getLang } from "../src/i18n.js";
+import { t, setLang } from "../src/i18n.js";
 
-const VERSION = "0.1.0";
+const VERSION = "0.2.0";
+const CMD = "clisync";
 const args = process.argv.slice(2);
 const flags = new Set(args.filter((a) => a.startsWith("-")));
+
 // Handle version flags before cmd parsing
 if (flags.has("-v") || flags.has("--version")) {
-  console.log(`cs v${VERSION}`);
+  console.log(`${CMD} v${VERSION}`);
   process.exit(0);
 }
 const cmd = args.find((a) => !a.startsWith("-"));
@@ -34,31 +36,35 @@ const c = wrap("36");
 const d = wrap("2");
 const b = wrap("1");
 
-// ─── Secure input ────────────────────────────────────
+// ─── Input helpers ───────────────────────────────────
 function askSecret(question) {
-  return new Promise((resolve) => {
-    const rl = readline.createInterface({ input: process.stdin, terminal: false });
+  return new Promise((resolve, reject) => {
     process.stdout.write(question);
 
-    if (process.stdin.isTTY) {
-      process.stdin.setRawMode(true);
+    // Piped input: read line normally
+    if (!process.stdin.isTTY) {
+      const rl = readline.createInterface({ input: process.stdin, terminal: false });
+      rl.once("line", (line) => { rl.close(); resolve(line.trim()); });
+      rl.once("close", () => resolve(""));
+      return;
     }
-    process.stdin.resume();
 
+    // TTY: raw mode, no echo
+    process.stdin.setRawMode(true);
+    process.stdin.resume();
     let input = "";
     const onData = (ch) => {
       const s = ch.toString();
       if (s === "\n" || s === "\r" || s === "\r\n") {
-        if (process.stdin.isTTY) process.stdin.setRawMode(false);
+        process.stdin.setRawMode(false);
         process.stdin.removeListener("data", onData);
         process.stdin.pause();
-        rl.close();
         process.stdout.write("\n");
         resolve(input.trim());
-      } else if (s === "\u0003") { // Ctrl+C
+      } else if (s === "\u0003") {
         process.stdout.write("\n");
         process.exit(1);
-      } else if (s === "\u007f" || s === "\b") { // Backspace
+      } else if (s === "\u007f" || s === "\b") {
         input = input.slice(0, -1);
       } else {
         input += s;
@@ -76,11 +82,11 @@ function ask(question) {
 // ─── init ─────────────────────────────────────────────
 async function cmdInit() {
   console.log(`
-${b("cs init")} — ${t("initTitle")}
+${b(`${CMD} init`)} — ${t("initTitle")}
 
   ${t("initHasToken")}
   ${t("initNewToken")}
-  ${c("https://github.com/settings/tokens/new?scopes=gist&description=llm-sync")}
+  ${c("https://github.com/settings/tokens/new?scopes=gist&description=clisync")}
   ${d(`(${t("initHint")})`)}
 `);
 
@@ -96,11 +102,11 @@ ${b("cs init")} — ${t("initTitle")}
     const username = await store.init(token);
     console.log(`
   ${g("✓")} ${t("tokenOk")} (${b(username)})
-  ${d(`${t("tokenSaved")} ~/.llm-sync/auth.json`)}
+  ${d(`${t("tokenSaved")} ~/.clisync/auth.json`)}
 
   ${t("nowReady")}
-    ${c("cs save")}   ${t("saveHint")}
-    ${c("cs load")}   ${t("loadHint")}
+    ${c(`${CMD} save`)}   ${t("saveHint")}
+    ${c(`${CMD} load`)}   ${t("loadHint")}
 `);
   } catch (e) {
     console.log(`\n  ${r("✗")} ${t("tokenFail")} ${e.message}`);
@@ -114,7 +120,7 @@ async function cmdSave() {
   requireInit();
   const skipRedact = flags.has("--no-redact");
 
-  console.log(`\n${b("cs save")}\n`);
+  console.log(`\n${b(`${CMD} save`)}\n`);
   console.log(`  ${t("scanning")}\n`);
 
   const results = scan();
@@ -158,8 +164,8 @@ async function cmdSave() {
   ${d("https://gist.github.com/" + gistId)}
 
   ${d(t("fromOther"))}
-    ${c("npx clisync init")}   ${t("saveHint")}
-    ${c("npx clisync load")}   ${t("loadHint")}
+    ${c(`npx clisync init`)}   ${t("saveHint")}
+    ${c(`npx clisync load`)}   ${t("loadHint")}
 `);
   } catch (e) {
     console.log(`\n  ${r("✗")} ${t("uploadFail")} ${e.message}\n`);
@@ -172,7 +178,7 @@ async function cmdLoad() {
   requireInit();
   const force = flags.has("--force");
 
-  console.log(`\n${b("cs load")}\n`);
+  console.log(`\n${b(`${CMD} load`)}\n`);
   console.log(`  ${t("downloading")}\n`);
 
   let bundle;
@@ -180,7 +186,11 @@ async function cmdLoad() {
     bundle = await store.pull();
   } catch (e) {
     console.log(`  ${r("✗")} ${e.message}`);
-    console.log(`  ${t("loadFirst")} ${c("cs save")} ${t("loadFirstSuffix")}\n`);
+    if (e.message.includes("rate limited") || e.message.includes("GitHub API")) {
+      console.log(`  ${t("loadNetworkError")}\n`);
+    } else {
+      console.log(`  ${t("loadFirst", { cmd: c(`${CMD} save`) })}\n`);
+    }
     return;
   }
 
@@ -188,11 +198,20 @@ async function cmdLoad() {
   console.log(`  ${d(t("savedMachine") + " " + bundle.machine)}`);
   console.log(`  ${d(t("fileCount") + "   " + bundle.file_count)}\n`);
 
+  // Confirmation prompt (skip with --force)
+  if (!force) {
+    const answer = await ask(`  ${t("confirmLoad")}`);
+    if (answer.toLowerCase() !== "y") {
+      console.log();
+      return;
+    }
+    console.log();
+  }
+
   let applied = 0;
   let skipped = 0;
   let totalSize = 0;
 
-  // Group files by tool for display
   const toolMap = {};
   for (const p of PROFILES) {
     for (const pp of p.paths) {
@@ -219,7 +238,6 @@ async function cmdLoad() {
     const target = abs(rel);
     const dir = path.dirname(target);
 
-    // Skip if identical
     if (fs.existsSync(target)) {
       const existing = fs.readFileSync(target, "utf-8");
       if (existing === content) {
@@ -255,7 +273,7 @@ async function cmdLoad() {
 
 // ─── list ─────────────────────────────────────────────
 function cmdList() {
-  console.log(`\n${b("cs list")}\n`);
+  console.log(`\n${b(`${CMD} list`)}\n`);
 
   const results = scan();
   if (results.length === 0) {
@@ -275,7 +293,7 @@ function cmdList() {
 
 // ─── status ──────────────────────────────────────────
 function cmdStatus() {
-  console.log(`\n${b("cs status")}\n`);
+  console.log(`\n${b(`${CMD} status`)}\n`);
 
   const info = store.getInfo();
   console.log(`  ${t("initialized")}  ${info.initialized ? g("✓") : r("✗")}`);
@@ -302,21 +320,21 @@ function cmdLink() {
 // ─── help ─────────────────────────────────────────────
 function showHelp() {
   console.log(`
-  ${b("cs")} v${VERSION} — ${t("helpDesc")}
+  ${b(CMD)} v${VERSION} — ${t("helpDesc")}
 
   ${b(t("helpUsage"))}
-    ${c("cs init")}              ${t("helpInit")}
-    ${c("cs save")}              ${t("helpSave")}
-    ${c("cs load")}              ${t("helpLoad")}
-    ${c("cs list")}              ${t("helpList")}
-    ${c("cs status")}            ${t("helpStatus")}
-    ${c("cs link <gist-id>")}    ${t("helpLink")}
+    ${c(`${CMD} init`)}              ${t("helpInit")}
+    ${c(`${CMD} save`)}              ${t("helpSave")}
+    ${c(`${CMD} load`)}              ${t("helpLoad")}
+    ${c(`${CMD} list`)}              ${t("helpList")}
+    ${c(`${CMD} status`)}            ${t("helpStatus")}
+    ${c(`${CMD} link <gist-id>`)}    ${t("helpLink")}
 
   ${b(t("helpOptions"))}
-    ${c("cs save --no-redact")}  ${t("helpNoRedact")}
-    ${c("cs load --force")}      ${t("helpForce")}
-    ${c("--lang=en|ko")}          ${t("helpLang")}
-    ${c("--en / --ko")}           ${t("helpLang")}
+    ${c(`${CMD} save --no-redact`)}  ${t("helpNoRedact")}
+    ${c(`${CMD} load --force`)}      ${t("helpForce")}
+    ${c("--lang=en|ko")}              ${t("helpLang")}
+    ${c("--en / --ko")}               ${t("helpLang")}
 
   ${b(t("helpTools"))}
     Claude Code, Gemini CLI, Codex, Aider, Continue, Copilot CLI
@@ -327,7 +345,7 @@ function showHelp() {
 
 function requireInit() {
   if (!store.isInitialized()) {
-    console.log(`\n  ${r("✗")} ${t("requireInit")} ${c("cs init")} ${t("requireInitSuffix")}\n`);
+    console.log(`\n  ${r("✗")} ${t("requireInit", { cmd: c(`${CMD} init`) })}\n`);
     process.exit(1);
   }
 }
@@ -356,6 +374,7 @@ function catSummary(scanResults) {
     }
   }
   return Object.entries(counts)
+    .filter(([, n]) => n > 0)
     .map(([cat, n]) => `${t(CAT_KEYS[cat] || "catEtc")} ${n}`)
     .join(" | ");
 }
@@ -363,7 +382,7 @@ function catSummary(scanResults) {
 function getCatForRel(rel) {
   for (const p of PROFILES) {
     for (const pp of p.paths) {
-      if (rel === pp.rel || (pp.dir && rel.startsWith(pp.rel))) {
+      if (rel === pp.rel || (pp.dir && rel.startsWith(pp.rel + "/"))) {
         return pp.cat || "etc";
       }
     }
@@ -378,22 +397,28 @@ function catSummaryFromMap(filesMap) {
     counts[cat] = (counts[cat] || 0) + 1;
   }
   return Object.entries(counts)
+    .filter(([, n]) => n > 0)
     .map(([cat, n]) => `${t(CAT_KEYS[cat] || "catEtc")} ${n}`)
     .join(" | ");
 }
 
 // ─── Main ─────────────────────────────────────────────
-switch (cmd) {
-  case "init":    await cmdInit(); break;
-  case "save":    await cmdSave(); break;
-  case "load":    await cmdLoad(); break;
-  case "list":    cmdList(); break;
-  case "status":  cmdStatus(); break;
-  case "link":    cmdLink(); break;
-  case "version": console.log(`cs v${VERSION}`); break;
-  case undefined: showHelp(); break;
-  default:
-    console.log(`\n  ${r("✗")} ${t("unknownCmd")} ${cmd}`);
-    showHelp();
-    break;
+try {
+  switch (cmd) {
+    case "init":    await cmdInit(); break;
+    case "save":    await cmdSave(); break;
+    case "load":    await cmdLoad(); break;
+    case "list":    cmdList(); break;
+    case "status":  cmdStatus(); break;
+    case "link":    cmdLink(); break;
+    case "version": console.log(`${CMD} v${VERSION}`); break;
+    case undefined: showHelp(); break;
+    default:
+      console.log(`\n  ${r("✗")} ${t("unknownCmd")} ${cmd}`);
+      showHelp();
+      break;
+  }
+} catch (e) {
+  console.error(`\n  ${r("✗")} ${e.message}\n`);
+  process.exit(1);
 }
