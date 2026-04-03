@@ -6,18 +6,62 @@ import readline from "node:readline";
 import { scan, collectFiles } from "../src/scanner.js";
 import { abs, PROFILES } from "../src/profiles.js";
 import * as store from "../src/store.js";
+import { t, setLang, getLang } from "../src/i18n.js";
 
-const VERSION = "0.1.8";
-const cmd = process.argv[2];
-const flags = new Set(process.argv.slice(3).filter((a) => a.startsWith("-")));
+const VERSION = "0.2.0";
+const args = process.argv.slice(2);
+const cmd = args.find((a) => !a.startsWith("-"));
+const flags = new Set(args.filter((a) => a.startsWith("-")));
+
+// Parse --lang flag
+const langFlag = args.find((a) => a.startsWith("--lang="));
+if (langFlag) setLang(langFlag.split("=")[1]);
+else if (flags.has("--en")) setLang("en");
+else if (flags.has("--ko")) setLang("ko");
 
 // ─── Colors ───────────────────────────────────────────
-const g = (s) => `\x1b[32m${s}\x1b[0m`;
-const r = (s) => `\x1b[31m${s}\x1b[0m`;
-const y = (s) => `\x1b[33m${s}\x1b[0m`;
-const c = (s) => `\x1b[36m${s}\x1b[0m`;
-const d = (s) => `\x1b[2m${s}\x1b[0m`;
-const b = (s) => `\x1b[1m${s}\x1b[0m`;
+const useColor = process.stdout.isTTY !== false;
+const wrap = (code) => useColor ? (s) => `\x1b[${code}m${s}\x1b[0m` : (s) => s;
+const g = wrap("32");
+const r = wrap("31");
+const y = wrap("33");
+const c = wrap("36");
+const d = wrap("2");
+const b = wrap("1");
+
+// ─── Secure input ────────────────────────────────────
+function askSecret(question) {
+  return new Promise((resolve) => {
+    const rl = readline.createInterface({ input: process.stdin, terminal: false });
+    process.stdout.write(question);
+
+    if (process.stdin.isTTY) {
+      process.stdin.setRawMode(true);
+    }
+    process.stdin.resume();
+
+    let input = "";
+    const onData = (ch) => {
+      const s = ch.toString();
+      if (s === "\n" || s === "\r" || s === "\r\n") {
+        if (process.stdin.isTTY) process.stdin.setRawMode(false);
+        process.stdin.removeListener("data", onData);
+        process.stdin.pause();
+        rl.close();
+        process.stdout.write("\n");
+        resolve(input.trim());
+      } else if (s === "\u0003") { // Ctrl+C
+        process.stdout.write("\n");
+        process.exit(1);
+      } else if (s === "\u007f" || s === "\b") { // Backspace
+        input = input.slice(0, -1);
+      } else {
+        input += s;
+      }
+    };
+    process.stdin.on("data", onData);
+  });
+}
 
 function ask(question) {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
@@ -27,35 +71,35 @@ function ask(question) {
 // ─── init ─────────────────────────────────────────────
 async function cmdInit() {
   console.log(`
-${b("lcs init")} — 이 컴퓨터에 GitHub 토큰 등록
+${b("lcs init")} — ${t("initTitle")}
 
-  이미 토큰이 있으면 바로 붙여넣기 하세요.
-  처음이면 아래 링크에서 토큰을 만들 수 있습니다:
+  ${t("initHasToken")}
+  ${t("initNewToken")}
   ${c("https://github.com/settings/tokens/new?scopes=gist&description=llm-sync")}
-  ${d("(gist 권한만 체크 → Generate token → 복사)")}
+  ${d(`(${t("initHint")})`)}
 `);
 
-  const token = await ask("  GitHub token: ");
+  const token = await askSecret(t("tokenPrompt"));
 
   if (!token) {
-    console.log(`\n  ${r("✗")} 토큰이 입력되지 않았습니다.\n`);
+    console.log(`\n  ${r("✗")} ${t("tokenEmpty")}\n`);
     process.exit(1);
   }
 
   try {
-    console.log(`\n  토큰 확인 중...`);
+    console.log(`\n  ${t("tokenChecking")}`);
     const username = await store.init(token);
     console.log(`
-  ${g("✓")} 인증 완료! (${b(username)})
-  ${d("토큰 저장됨: ~/.llm-sync/auth.json")}
+  ${g("✓")} ${t("tokenOk")} (${b(username)})
+  ${d(`${t("tokenSaved")} ~/.llm-sync/auth.json`)}
 
-  이제 사용할 수 있습니다:
-    ${c("lcs save")}   ← 현재 설정 저장
-    ${c("lcs load")}   ← 다른 컴퓨터에서 불러오기
+  ${t("nowReady")}
+    ${c("lcs save")}   ${t("saveHint")}
+    ${c("lcs load")}   ${t("loadHint")}
 `);
   } catch (e) {
-    console.log(`\n  ${r("✗")} 토큰 인증 실패: ${e.message}`);
-    console.log(`  토큰을 다시 확인해 주세요.\n`);
+    console.log(`\n  ${r("✗")} ${t("tokenFail")} ${e.message}`);
+    console.log(`  ${t("tokenRetry")}\n`);
     process.exit(1);
   }
 }
@@ -66,13 +110,13 @@ async function cmdSave() {
   const skipRedact = flags.has("--no-redact");
 
   console.log(`\n${b("lcs save")}\n`);
-  console.log("  설정 파일 탐색 중...\n");
+  console.log(`  ${t("scanning")}\n`);
 
   const results = scan();
 
   if (results.length === 0) {
-    console.log("  검색된 LLM CLI 설정이 없습니다.\n");
-    console.log("  지원 도구:");
+    console.log(`  ${t("noConfigs")}\n`);
+    console.log(`  ${t("supported")}`);
     for (const p of PROFILES) console.log(`    - ${p.name}`);
     console.log();
     return;
@@ -84,36 +128,36 @@ async function cmdSave() {
     let toolSize = 0;
     for (const f of files) toolSize += Buffer.byteLength(f.content, "utf-8");
     totalSize += toolSize;
-    console.log(`  ${g("✓")} ${profile.name} — ${files.length}개 파일, ${fmtBytes(toolSize)}`);
+    console.log(`  ${g("✓")} ${profile.name} — ${files.length} ${t("files")}, ${fmtBytes(toolSize)}`);
     for (const f of files) {
       const size = Buffer.byteLength(f.content, "utf-8");
       console.log(`    ${f.rel} ${d("(" + fmtBytes(size) + ")")}`);
     }
     total += files.length;
   }
-  console.log(`\n  ${b("합계:")} ${total}개 파일, ${fmtBytes(totalSize)}`);
+  console.log(`\n  ${b(t("total"))} ${total} ${t("files")}, ${fmtBytes(totalSize)}`);
   console.log(`  ${catSummary(results)}`);
 
   const filesMap = collectFiles(results, { skipRedact });
 
   if (skipRedact) {
-    console.log(`\n  ${y("⚠")} API 키 등 민감 정보가 포함된 채로 업로드됩니다.`);
+    console.log(`\n  ${y("⚠")} ${t("noRedactWarn")}`);
   }
 
-  console.log("\n  Gist에 업로드 중...");
+  console.log(`\n  ${t("uploading")}`);
 
   try {
     const { gistId, updated } = await store.push(filesMap);
     console.log(`
-  ${g("✓")} ${updated ? "업데이트" : "생성"} 완료! (${total}개 파일)
+  ${g("✓")} ${updated ? t("updated") : t("created")} ${t("done")} (${total} ${t("files")})
   ${d("https://gist.github.com/" + gistId)}
 
-  ${d("다른 컴퓨터에서:")}
-    ${c("npx lcs init")}   ← 같은 토큰 입력
-    ${c("npx lcs load")}   ← 설정 불러오기
+  ${d(t("fromOther"))}
+    ${c("npx llm-configsync init")}   ${t("saveHint").replace("저장", "입력").replace("save", "token")}
+    ${c("npx llm-configsync load")}   ${t("loadHint")}
 `);
   } catch (e) {
-    console.log(`\n  ${r("✗")} 업로드 실패: ${e.message}\n`);
+    console.log(`\n  ${r("✗")} ${t("uploadFail")} ${e.message}\n`);
     process.exit(1);
   }
 }
@@ -124,20 +168,20 @@ async function cmdLoad() {
   const force = flags.has("--force");
 
   console.log(`\n${b("lcs load")}\n`);
-  console.log("  Gist에서 다운로드 중...\n");
+  console.log(`  ${t("downloading")}\n`);
 
   let bundle;
   try {
     bundle = await store.pull();
   } catch (e) {
     console.log(`  ${r("✗")} ${e.message}`);
-    console.log(`  먼저 다른 컴퓨터에서 ${c("lcs save")}를 실행하세요.\n`);
+    console.log(`  ${t("loadFirst")} ${c("lcs save")} ${t("loadFirstSuffix")}\n`);
     return;
   }
 
-  console.log(`  ${d("저장 시점: " + bundle.updated_at)}`);
-  console.log(`  ${d("저장 머신: " + bundle.machine)}`);
-  console.log(`  ${d("파일 수:   " + bundle.file_count + "개")}\n`);
+  console.log(`  ${d(t("savedAt") + " " + bundle.updated_at)}`);
+  console.log(`  ${d(t("savedMachine") + " " + bundle.machine)}`);
+  console.log(`  ${d(t("fileCount") + "   " + bundle.file_count)}\n`);
 
   let applied = 0;
   let skipped = 0;
@@ -148,7 +192,6 @@ async function cmdLoad() {
   for (const p of PROFILES) {
     for (const pp of p.paths) {
       toolMap[pp.rel] = p.name;
-      // For dir entries, match prefix
       if (pp.dir) {
         for (const rel of Object.keys(bundle.files)) {
           if (rel.startsWith(pp.rel.replace(/\/$/, ""))) toolMap[rel] = p.name;
@@ -160,7 +203,7 @@ async function cmdLoad() {
   let currentTool = "";
 
   for (const [rel, content] of Object.entries(bundle.files)) {
-    const tool = toolMap[rel] || "기타";
+    const tool = toolMap[rel] || t("other");
     if (tool !== currentTool) {
       currentTool = tool;
       console.log(`  ${b(tool)}`);
@@ -175,11 +218,10 @@ async function cmdLoad() {
     if (fs.existsSync(target)) {
       const existing = fs.readFileSync(target, "utf-8");
       if (existing === content) {
-        console.log(`    ${d("= " + rel)} ${d("(" + fmtBytes(size) + ", 동일)")}`);
+        console.log(`    ${d("= " + rel)} ${d("(" + fmtBytes(size) + ", " + t("identical") + ")")}`);
         skipped++;
         continue;
       }
-      // Backup before overwrite
       if (!force) {
         fs.copyFileSync(target, target + ".bak");
       }
@@ -192,16 +234,16 @@ async function cmdLoad() {
   }
 
   console.log();
-  console.log(`  ${b("합계:")} ${applied + skipped}개 파일, ${fmtBytes(totalSize)}`);
+  console.log(`  ${b(t("total"))} ${applied + skipped} ${t("files")}, ${fmtBytes(totalSize)}`);
   console.log(`  ${catSummaryFromMap(bundle.files)}`);
   if (applied > 0) {
-    console.log(`  ${g("✓")} ${applied}개 파일 복원 완료`);
+    console.log(`  ${g("✓")} ${applied} ${t("restored")}`);
   }
   if (skipped > 0) {
-    console.log(`  ${d(skipped + "개 파일은 이미 동일")}`);
+    console.log(`  ${d(skipped + " " + t("alreadySame"))}`);
   }
   if (!force && applied > 0) {
-    console.log(`  ${d("기존 파일은 .bak으로 백업됨")}`);
+    console.log(`  ${d(t("backedUp"))}`);
   }
   console.log();
 }
@@ -212,7 +254,7 @@ function cmdList() {
 
   const results = scan();
   if (results.length === 0) {
-    console.log("  이 컴퓨터에서 검색된 LLM CLI 설정이 없습니다.\n");
+    console.log(`  ${t("noLocal")}\n`);
     return;
   }
 
@@ -220,8 +262,7 @@ function cmdList() {
     console.log(`  ${b(profile.name)}`);
     for (const f of files) {
       const size = fs.statSync(f.absPath).size;
-      const kb = size < 1024 ? `${size}B` : `${(size / 1024).toFixed(1)}KB`;
-      console.log(`    ${f.rel} ${d("(" + kb + ")")}`);
+      console.log(`    ${f.rel} ${d("(" + fmtBytes(size) + ")")}`);
     }
     console.log();
   }
@@ -232,32 +273,47 @@ function cmdStatus() {
   console.log(`\n${b("lcs status")}\n`);
 
   const info = store.getInfo();
-  console.log(`  초기화:  ${info.initialized ? g("✓") : r("✗")}`);
-  if (info.username) console.log(`  계정:    ${info.username}`);
+  console.log(`  ${t("initialized")}  ${info.initialized ? g("✓") : r("✗")}`);
+  if (info.username) console.log(`  ${t("account")}    ${info.username}`);
   if (info.gistId) console.log(`  Gist:    ${d("https://gist.github.com/" + info.gistId)}`);
 
   const results = scan();
   const total = results.reduce((s, r) => s + r.files.length, 0);
-  console.log(`  로컬:    ${total}개 파일 (${results.length}개 도구)\n`);
+  console.log(`  ${t("local")}    ${total} ${t("files")} (${results.length} ${t("tools")})\n`);
+}
+
+// ─── link ────────────────────────────────────────────
+function cmdLink() {
+  const gistId = args.find((a) => !a.startsWith("-") && a !== "link");
+  if (!gistId) {
+    console.log(`\n  ${t("linkUsage")}\n`);
+    return;
+  }
+  requireInit();
+  store.link(gistId);
+  console.log(`\n  ${g("✓")} ${t("linkDone")} (${d(gistId)})\n`);
 }
 
 // ─── help ─────────────────────────────────────────────
 function showHelp() {
   console.log(`
-  ${b("lcs")} v${VERSION} — LLM CLI 설정 동기화
+  ${b("lcs")} v${VERSION} — ${t("helpDesc")}
 
-  ${b("사용법:")}
-    ${c("lcs init")}              GitHub 토큰 설정 (최초 1회)
-    ${c("lcs save")}              현재 설정 → Gist에 저장
-    ${c("lcs load")}              Gist에서 → 현재 컴퓨터에 복원
-    ${c("lcs list")}              로컬에 있는 설정 파일 목록
-    ${c("lcs status")}            동기화 상태 확인
+  ${b(t("helpUsage"))}
+    ${c("lcs init")}              ${t("helpInit")}
+    ${c("lcs save")}              ${t("helpSave")}
+    ${c("lcs load")}              ${t("helpLoad")}
+    ${c("lcs list")}              ${t("helpList")}
+    ${c("lcs status")}            ${t("helpStatus")}
+    ${c("lcs link <gist-id>")}    ${t("helpLink")}
 
-  ${b("옵션:")}
-    ${c("lcs save --no-redact")}  API 키 마스킹 없이 저장
-    ${c("lcs load --force")}      백업 없이 덮어쓰기
+  ${b(t("helpOptions"))}
+    ${c("lcs save --no-redact")}  ${t("helpNoRedact")}
+    ${c("lcs load --force")}      ${t("helpForce")}
+    ${c("--lang=en|ko")}          ${t("helpLang")}
+    ${c("--en / --ko")}           ${t("helpLang")}
 
-  ${b("지원 도구:")}
+  ${b(t("helpTools"))}
     Claude Code, Gemini CLI, Codex, Aider, Continue, Copilot CLI
   `);
 }
@@ -266,7 +322,7 @@ function showHelp() {
 
 function requireInit() {
   if (!store.isInitialized()) {
-    console.log(`\n  ${r("✗")} 먼저 ${c("lcs init")}을 실행하세요.\n`);
+    console.log(`\n  ${r("✗")} ${t("requireInit")} ${c("lcs init")} ${t("requireInitSuffix")}\n`);
     process.exit(1);
   }
 }
@@ -277,16 +333,15 @@ function fmtBytes(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
 }
 
-const CAT_LABELS = {
-  settings: "세팅",
-  mcp: "MCP 서버",
-  hooks: "훅",
-  skills: "스킬",
-  instructions: "인스트럭션",
-  etc: "기타",
+const CAT_KEYS = {
+  settings: "catSettings",
+  mcp: "catMcp",
+  hooks: "catHooks",
+  skills: "catSkills",
+  instructions: "catInstructions",
+  etc: "catEtc",
 };
 
-// Count categories from scan results
 function catSummary(scanResults) {
   const counts = {};
   for (const { files } of scanResults) {
@@ -296,11 +351,10 @@ function catSummary(scanResults) {
     }
   }
   return Object.entries(counts)
-    .map(([cat, n]) => `${CAT_LABELS[cat] || cat} ${n}개`)
+    .map(([cat, n]) => `${t(CAT_KEYS[cat] || "catEtc")} ${n}`)
     .join(" | ");
 }
 
-// Get category for a rel path by matching against profiles
 function getCatForRel(rel) {
   for (const p of PROFILES) {
     for (const pp of p.paths) {
@@ -312,7 +366,6 @@ function getCatForRel(rel) {
   return "etc";
 }
 
-// Count categories from a files map (for load)
 function catSummaryFromMap(filesMap) {
   const counts = {};
   for (const rel of Object.keys(filesMap)) {
@@ -320,7 +373,7 @@ function catSummaryFromMap(filesMap) {
     counts[cat] = (counts[cat] || 0) + 1;
   }
   return Object.entries(counts)
-    .map(([cat, n]) => `${CAT_LABELS[cat] || cat} ${n}개`)
+    .map(([cat, n]) => `${t(CAT_KEYS[cat] || "catEtc")} ${n}`)
     .join(" | ");
 }
 
@@ -331,6 +384,11 @@ switch (cmd) {
   case "load":    await cmdLoad(); break;
   case "list":    cmdList(); break;
   case "status":  cmdStatus(); break;
-  case "-v": case "--version": console.log(`llm-sync v${VERSION}`); break;
-  default:        showHelp(); break;
+  case "link":    cmdLink(); break;
+  case "-v": case "--version": case "version": console.log(`lcs v${VERSION}`); break;
+  case undefined: showHelp(); break;
+  default:
+    console.log(`\n  ${r("✗")} ${t("unknownCmd")} ${cmd}`);
+    showHelp();
+    break;
 }

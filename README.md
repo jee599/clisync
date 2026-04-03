@@ -1,5 +1,5 @@
 <p align="center">
-  <strong>⚡ llm-configsync</strong>
+  <strong>llm-configsync</strong>
 </p>
 
 <p align="center">
@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="https://www.npmjs.com/package/llm-configsync"><img src="https://img.shields.io/npm/v/llm-configsync?style=flat-square" alt="npm" /></a>
-  <a href="https://github.com/jidonglab/llm-configsync/blob/main/LICENSE"><img src="https://img.shields.io/github/license/jidonglab/llm-configsync?style=flat-square" alt="License" /></a>
+  <a href="https://github.com/jee599/llm-configsync/blob/main/LICENSE"><img src="https://img.shields.io/github/license/jee599/llm-configsync?style=flat-square" alt="License" /></a>
   <img src="https://img.shields.io/badge/dependencies-0-brightgreen?style=flat-square" alt="Zero Dependencies" />
 </p>
 
@@ -22,7 +22,7 @@ New machine. Claude Code, Gemini CLI, Codex all installed — but none of your s
 Machine A                     GitHub Gist              Machine B
                                (private)
 ~/.claude/*  ─┐                                   ┌─> ~/.claude/*
-~/.gemini/*  ─┼── lcs save ──▶  JSON bundle ──▶ lcs load ──┼─> ~/.gemini/*
+~/.gemini/*  ─┼── lcs save ──>  JSON bundle ──> lcs load ──┼─> ~/.gemini/*
 ~/.codex/*   ─┘                                   └─> ~/.codex/*
 ```
 
@@ -47,31 +47,36 @@ lcs load     # done — all configs restored
 ```
 lcs save
 
-  ✓ Claude Code — 5 files, 3.2KB
-    .claude/settings.json (436B)
-    .claude/mcp_servers.json (812B)
-    .claude/CLAUDE.md (1.1KB)
-    .claude/hooks/pre-commit.sh (128B)
-    .claude/skills/deploy.md (96B)
-  ✓ Gemini CLI — 1 file, 320B
-    .gemini/settings.json (320B)
+  ✓ Claude Code — 22 files, 210.5KB
+    .claude/settings.json (1.5KB)
+    .claude/keybindings.json (320B)
+    .claude/CLAUDE.md (3.1KB)
+    .claude/hooks/contextzip-rewrite.sh (1.5KB)
+    .claude/skills/auto-publish/SKILL.md (12.0KB)
+    .claude/plugins/installed_plugins.json (3.5KB)
+    .claude/teams/default/inboxes/team-lead.json (9.7KB)
+    ...
+  ✓ Gemini CLI — 3 files, 348B
+    .gemini/settings.json (82B)
+    .gemini/projects.json (266B)
+  ✓ OpenAI Codex — 2 files, 1.8KB
+    .codex/config.toml (612B)
+    .codex/rules/default.rules (1.2KB)
 
-  Total: 6 files, 3.5KB
-  Settings 2 | MCP 1 | Hooks 1 | Skills 1 | Instructions 1
-
-  ✓ Uploaded to Gist
+  Total: 27 files, 212.7KB
+  Settings 10 | Hooks 3 | Skills 12 | Instructions 2
 ```
 
 ## What Gets Synced
 
-| Tool | Settings | MCP | Hooks | Skills | Instructions |
+| Tool | Settings | Hooks | Skills | Instructions | Plugins/Teams |
 |:---|:---:|:---:|:---:|:---:|:---:|
-| **Claude Code** | ✓ | ✓ | ✓ | ✓ `skills/` | ✓ `CLAUDE.md` |
-| **Gemini CLI** | ✓ | ✓ | | | ✓ `GEMINI.md` |
-| **OpenAI Codex** | ✓ | | | | ✓ `instructions.md` |
-| **Aider** | ✓ | | | | |
-| **Continue** | ✓ | | | | |
-| **Copilot CLI** | ✓ | | | | |
+| **Claude Code** | `settings.json` `keybindings.json` | `hooks/` | `skills/` | `CLAUDE.md` | `plugins/*.json` `teams/` |
+| **Gemini CLI** | `settings.json` `projects.json` | | | | MCP `antigravity/mcp_config.json` |
+| **OpenAI Codex** | `config.toml` | | | `instructions.md` `rules/` | |
+| **Aider** | `.aider.conf.yml` `.aider.model.settings.yml` `.aider.models.json` | | | | |
+| **Continue** | `.continuerc.json` `config.yaml` `config.ts` `.continueignore` | | | | |
+| **Copilot CLI** | `settings.json` | | | | |
 
 ## Commands
 
@@ -82,24 +87,33 @@ lcs save
 | `lcs load` | Download and restore configs |
 | `lcs list` | Show detected local configs |
 | `lcs status` | Show sync status |
+| `lcs link <gist-id>` | Link to existing Gist |
 | `lcs save --no-redact` | Upload without redacting API keys |
 | `lcs load --force` | Overwrite without backups |
+| `lcs --version` | Show version |
+| `--lang=en` / `--ko` | Change language (auto-detected) |
 
 ## Safety
 
-- **API keys auto-redacted** — OpenAI, Anthropic, Google, GitHub, Slack token patterns detected and masked before upload
+- **30+ API key patterns auto-redacted** — OpenAI, Anthropic, Google, AWS, GitHub, GitLab, HuggingFace, Slack, Replicate, Vercel, Supabase, and generic key-value patterns
+- **Sensitive files auto-skipped** — `auth.json`, `credentials.json`, `.env`, `.pem`, `.key` files are never uploaded
 - **Private Gist** — only you can see it
 - **Backups** — existing files saved as `.bak` before overwriting
-- **Zero dependencies** — Node.js 18+ built-in modules only, nothing to audit
+- **File size limit** — files over 1MB are skipped; binary files auto-detected and excluded
+- **Path traversal protection** — validates all paths on restore
+- **Token security** — hidden input on entry, file permissions set to owner-only (0600)
+- **Cross-platform** — works on macOS, Linux, and Windows with consistent path handling
+- **Zero dependencies** — Node.js 18+ built-in modules only
+- **Bilingual** — auto-detects system language (English/Korean), override with `--lang=en` or `--ko`
 
 ## How It Works
 
 ```
 lcs save:
-  ~/.claude/* ──→ scan ──→ redact secrets ──→ JSON bundle ──→ GitHub Gist API
-                                                                    │
-lcs load:                                                           │
-  GitHub Gist API ──→ download ──→ backup existing ──→ write files ─┘
+  ~/.claude/* ──> scan ──> skip sensitive ──> redact secrets ──> JSON bundle ──> Gist API
+                                                                                     |
+lcs load:                                                                            |
+  Gist API ──> download ──> validate paths ──> backup existing ──> write files ──────┘
 ```
 
 No server, no database, no account to create. Just your GitHub token and a private Gist.
@@ -129,5 +143,5 @@ MIT
 ---
 
 <p align="center">
-  <sub>Built by <a href="https://github.com/jidonglab">jidonglab</a> · Build things with AI</sub>
+  <sub>Built by <a href="https://github.com/jee599">jee599</a></sub>
 </p>

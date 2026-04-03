@@ -33,7 +33,7 @@ export const PROFILES = [
     id: "codex",
     paths: [
       { rel: ".codex/config.toml", desc: "Config", cat: "settings" },
-      { rel: ".codex/.codex-global-state.json", desc: "Global state", cat: "settings" },
+      { rel: ".codex/instructions.md", desc: "Global instructions", cat: "instructions" },
       { rel: ".codex/rules", desc: "Rules", dir: true, cat: "instructions" },
     ],
   },
@@ -43,6 +43,7 @@ export const PROFILES = [
     paths: [
       { rel: ".aider.conf.yml", desc: "Config", cat: "settings" },
       { rel: ".aider.model.settings.yml", desc: "Model settings", cat: "settings" },
+      { rel: ".aider.models.json", desc: "Model definitions", cat: "settings" },
     ],
   },
   {
@@ -52,6 +53,7 @@ export const PROFILES = [
       { rel: ".continue/.continuerc.json", desc: "Runtime config", cat: "settings" },
       { rel: ".continue/config.yaml", desc: "Config (YAML)", cat: "settings" },
       { rel: ".continue/config.ts", desc: "Config (TypeScript)", cat: "settings" },
+      { rel: ".continue/.continueignore", desc: "Ignore rules", cat: "settings" },
     ],
   },
   {
